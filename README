@@ -1,0 +1,13 @@
+README
+The purpose of this excercise is to write a simple dungeon generator and renderer using javascript and the three.js 3d rendering library. The logic of this program will go something like this:
+ - Create dungeon, store dungeon layout as a txt file
+
+ Notes I'm making as I do this thing
+If I want the wall to appear to the left edge of the tile, I have to render its x position at
+  # wall.position.x = -(tileXY/2); 
+If I want the wall to the right edge of the tile, I have to render its X position at
+  # wall.position.x = (tileXY/2);
+(Note that tileXY was initialized to 1 and the plane for tile was placed at coordinates 0,0. So what's going on is that the position of a mesh is the center of where it is rendered. The edges of the plane are located at +-planeDimension/2)
+
+ To have the base of the wall appear at the height of the tile I have to render its y position at:
+  # wall.position.y = (tileXY/2); (this position should go unchanged throughout the entire program)

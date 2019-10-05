@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset=utf-8>
+		<tltle>Dungeon Explorer</tltle>
+		<style>
+			canvas { width: 100%; height: 100% }
+			body { margin: 0;
+			
+		</style>
+		<script type="text/javascript" src= "./js/dun_gen.js"></script>
+	</head>
+		
+	<body>
+
+		<script src="js/three.js"></script>
+		<script>
+			var scene = new THREE.Scene();
+			var camera = new THREE.PerspectiveCamera( 75, window.innerWidth/window.innerHeight, 0.1, 1000 );
+			camera.position.z = -10;  camera.position.y = 50; camera.position.x = 20; // Do NOT Touch Y... plz
+			camera.rotation.x = -0.7854*2;
+
+
+			var tileXY = 1; //This game will use square tiles
+			var wallXY = {'x': tileXY,'y': 1.25}; //walls will be twice as tall as they are wide
+			var tokenPos = {'x': 0, 'z': 0};
+			var tileSet = [[2,1],[2,2],[2,3]];
+			var testSet = [[2,3,1],[2,2,5],[2,1,1],[1,3,1],[1,2,5],[1,1,2],[3,4,3],[3,3,3],[3,2,3],[3,1,8],[5,1,1],[6,1,7]];
+			var testMap = [[3,7,9],[4,7,'F'],[2,6,'D'],[3,6,1],[4,6,'C'],[3,5,3],[2,4,9],[3,4,8],[2,3,'E'],[3,3,1],[3,2,'A'],[4,3,6],[5,3,5],[5,2,2],[5,1,'A'],[6,5,9],[6,4,2],[6,3,1],[6,2,'C'],[7,6,4],[7,5,1],[7,4,8],[7,3,'C'],[8,5,7]];
+
+			var tokenDirection = 0; //The standard for direction will be 0 = North, 1 = East, 2 = South, 3 = West
+
+			var renderer = new THREE.WebGLRenderer({ alpha: true });
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			document.body.appendChild( renderer.domElement );
+
+			var tileGeometry = new THREE.PlaneGeometry(tileXY,tileXY); //Note the geometry of the tile is a square
+			var tileMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
+			var tile = new THREE.Mesh(tileGeometry, tileMaterial);
+
+			var ceilingGeometry = new THREE.PlaneGeometry(tileXY,tileXY); //Note the geometry of the tile is a square
+			var ceilingMaterial = new THREE.MeshBasicMaterial({ color: 0x5246f2, side: THREE.DoubleSide });
+
+			var wallGeometry = new THREE.PlaneGeometry(wallXY.x, wallXY.y);
+			var wallMaterial = new THREE.MeshBasicMaterial({ color: 0xf07400, side: THREE.DoubleSide });
+			var wall = new THREE.Mesh(tileGeometry, tileMaterial); 
+			wall.position.x = (tileXY/2); wall.position.y = (tileXY/2);
+
+			/**
+			* Test for iterating through an array of x,y coordinates
+			*/
+			// for(var it = 0; it<tileSet.length; it++){
+			// 	scene.add(returnTileMesh(tileSet[it][0],tileSet[it][1], 1) );
+			// }
+
+			//iterateDungeon(testMap);
+
+			//choose_number(10,20);
+			//var newRoom = new Room(2,2,6,12);
+			//var newHallway = new H_hallway(8,9,4);
+			//var V_hallway = new V_hallway(3,15,5);
+
+			create_floor();
+			iterateDungeon(all_spaces);
+			iterateDungeon(edge_spaces);
+
+			function animate() {							
+				requestAnimationFrame( animate );
+				renderer.render( scene, camera );
+			}
+
+			/**
+			* The idea of this fuinction is that it receives the location of a given square and returns the mesh needed for the dungeon
+			* Note what's going  on here is that the function is receiving a location and a "type" code and drawing a group of wall and 
+			* ground tiles at that particular location. There's 15 different opcaodes, each is represented by a number in hex
+			*/
+			function returnTileMesh(xPos, yPos, type){
+				var singleGeometry = new THREE.Geometry();
+				var groundTile = new THREE.Mesh(tileGeometry, tileMaterial);
+				var ceilingTile = new THREE.Mesh(ceilingGeometry, ceilingMaterial);				
+				var n_wall = new THREE.Mesh(wallGeometry, wallMaterial);
+				var e_wall = new THREE.Mesh(wallGeometry, wallMaterial);
+				var s_wall = new THREE.Mesh(wallGeometry, wallMaterial);
+				var w_wall = new THREE.Mesh(wallGeometry, wallMaterial);				
+				var group = new THREE.Group();
+
+
+				w_wall.rotation.y = -1.5708;
+				e_wall.rotation.y = 1.5708;
+
+				groundTile.position.x = xPos; groundTile.position.z = -yPos; 
+				groundTile.rotation.x = 1.5708;
+				ceilingTile.position.x = xPos; ceilingTile.position.z = -yPos; ceilingTile.position.y = wallXY.y;
+				ceilingTile.rotation.x = 1.5708;
+
+				w_wall.position.x = xPos-(tileXY/2); w_wall.position.z = -yPos; w_wall.position.y = (wallXY.y/2);					
+				e_wall.position.x = xPos+(tileXY/2); e_wall.position.z = -yPos; e_wall.position.y = (wallXY.y/2);
+				n_wall.position.x = xPos; n_wall.position.z = -yPos-(tileXY/2); n_wall.position.y = (wallXY.y/2);
+				s_wall.position.x = xPos; s_wall.position.z = -yPos+(tileXY/2); s_wall.position.y = (wallXY.y/2);
+				group.add(groundTile);
+				//group.add(ceilingTile);
+
+				if(type == 1){	
+					//Return a single tile with no walls	
+					return group;
+				}
+				else if(type == 2){
+					//w_wall.position.x = xPos-(tileXY/2); w_wall.position.z = -yPos; w_wall.position.y = (wallXY.y/2);
+					group.add(w_wall);					
+					return group;
+				}
+				else if(type == 3){
+					// w_wall.position.x = xPos-(tileXY/2); w_wall.position.z = -yPos; w_wall.position.y = (wallXY.y/2);					
+					// e_wall.position.x = xPos+(tileXY/2); e_wall.position.z = -yPos; e_wall.position.y = (wallXY.y/2);
+					group.add(e_wall);
+					group.add(w_wall);
+					return group;
+				}
+				else if(type == 4){
+					// w_wall.position.x = xPos-(tileXY/2); w_wall.position.z = -yPos; w_wall.position.y = (wallXY.y/2);					
+					// e_wall.position.x = xPos+(tileXY/2); e_wall.position.z = -yPos; e_wall.position.y = (wallXY.y/2);
+					// n_wall.position.x = xPos; n_wall.position.z = -yPos-(tileXY/2); n_wall.position.y = (wallXY.y/2);
+					group.add(e_wall);
+					group.add(w_wall);
+					group.add(n_wall);
+					return group;
+				}
+				else if(type == 5){
+					// n_wall.position.x = xPos; n_wall.position.z = -yPos-(tileXY/2); n_wall.position.y = (wallXY.y/2);
+					group.add(n_wall);
+					return group;
+				}
+				else if(type == 6){
+					// n_wall.position.x = xPos; n_wall.position.z = -yPos-(tileXY/2); n_wall.position.y = (wallXY.y/2);
+					// s_wall.position.x = xPos+(tileXY/2); s_wall.position.z = -yPos-(tileXY/2); s_wall.position.y = (wallXY.y/2);
+					group.add(n_wall);
+					group.add(s_wall);
+					return group;
+				}
+				else if(type == 7){
+					group.add(n_wall);
+					group.add(e_wall);
+					group.add(s_wall);
+					return group;
+				}
+				else if(type == 8){
+					group.add(e_wall);
+					return group;
+				}
+				else if(type == 9){
+					group.add(n_wall);
+					group.add(w_wall);
+					return group;
+				}
+				else if(type == 'A'){
+					group.add(e_wall);
+					group.add(s_wall);
+					group.add(w_wall);
+					return group;
+				}
+				else if(type == 'B'){
+					group.add(s_wall);
+					return group;
+				}
+				else if(type == 'C'){
+					group.add(s_wall);
+					group.add(e_wall);
+					return group;
+				}
+				else if(type == 'D'){
+					group.add(n_wall);
+					group.add(w_wall);
+					group.add(s_wall);
+					return group;
+				}
+				else if(type == 'E'){
+					group.add(w_wall);
+					group.add(s_wall);
+					return group;
+				}
+				else if(type == 'F'){
+					group.add(n_wall);
+					group.add(e_wall);
+					return group;
+				}
+			}
+
+			/**
+			* Function is used to iterate through the lines of a text file, read each character of each line and pass that character along with its coordinates to the returnTileMesh function to add its associated tile to the scene. 
+			*/
+			function iterateDungeon(tileArray){
+				for(var it = 0; it<tileArray.length; it++){
+					scene.add(returnTileMesh(tileArray[it][0],tileArray[it][1], tileArray[it][2]) );
+				}
+			}
+
+
+			animate();
+		</script>
+	</body>
+</html>
