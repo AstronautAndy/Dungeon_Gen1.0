@@ -1,0 +1,11 @@
+#messageBox {
+    overflow: scroll;
+    width: 600px;
+    height: 100px;
+}
+
+#pointingAt {
+	width: 600px;
+    height: 100px;
+    float:right;
+}

@@ -2,7 +2,7 @@
 <html>
 	<head>
 		<meta charset=utf-8>
-		<tltle>Dungeon Explorer</tltle>
+		<title>Dungeon Explorer</title>
 		<style>
 			canvas { width: 100%; height: 100% }
 			body { margin: 0;
@@ -10,63 +10,223 @@
 		</style>
 		<script type="text/javascript" src= "./js/dun_gen.js"></script>
 	</head>
-		
+		<link rel="stylesheet" href="styles.css"> <!-- link to stylesheet -->
 	<body>
 
+		<div id="messageBox"> <!-- used for delivering game status messages -->
+		</div>
+
+		<div id="pointingAt"> <!-- used to print enemy stats on the screen  -->
+		</div>
+
 		<script src="js/three.js"></script>
+		<script src="js/game_logic.js"></script>
 		<script>
+			
 			var scene = new THREE.Scene();
 			var camera = new THREE.PerspectiveCamera( 75, window.innerWidth/window.innerHeight, 0.1, 1000 );
-			camera.position.z = -10;  camera.position.y = 50; camera.position.x = 20; // Do NOT Touch Y... plz
+			camera.position.z = -20;  camera.position.y = 50; camera.position.x = 20; // Do NOT Touch Y... plz
 			camera.rotation.x = -0.7854*2;
 
+			var tileXY = 1.5; //This game will use square tiles
+			var wallXY = {'x': tileXY,'y': tileXY*2}; //walls will be twice as tall as they are wide
+			let yStart = wallXY.y/1.85;
+			var playerPos; //coordinate pair representing the current location of the player
 
-			var tileXY = 1; //This game will use square tiles
-			var wallXY = {'x': tileXY,'y': 1.25}; //walls will be twice as tall as they are wide
-			var tokenPos = {'x': 0, 'z': 0};
-			var tileSet = [[2,1],[2,2],[2,3]];
-			var testSet = [[2,3,1],[2,2,5],[2,1,1],[1,3,1],[1,2,5],[1,1,2],[3,4,3],[3,3,3],[3,2,3],[3,1,8],[5,1,1],[6,1,7]];
-			var testMap = [[3,7,9],[4,7,'F'],[2,6,'D'],[3,6,1],[4,6,'C'],[3,5,3],[2,4,9],[3,4,8],[2,3,'E'],[3,3,1],[3,2,'A'],[4,3,6],[5,3,5],[5,2,2],[5,1,'A'],[6,5,9],[6,4,2],[6,3,1],[6,2,'C'],[7,6,4],[7,5,1],[7,4,8],[7,3,'C'],[8,5,7]];
-
-			var tokenDirection = 0; //The standard for direction will be 0 = North, 1 = East, 2 = South, 3 = West
+			//var tokenDirection = 0; //The standard for direction will be 0 = North, 1 = East, 2 = South, 3 = West
 
 			var renderer = new THREE.WebGLRenderer({ alpha: true });
 			renderer.setSize( window.innerWidth, window.innerHeight );
 			document.body.appendChild( renderer.domElement );
 
+			var CharPlaceHolderGeo = new THREE.SphereGeometry( 1, 32, 32 );
+			var PC_PlaceHolderTexture = new THREE.MeshBasicMaterial( {color: 0xffff00} );
+			var itemPlaceHolderTexture = new THREE.MeshBasicMaterial( {color: 0x0000ff} );
+			var monsterPlaceHolderTexture = new THREE.MeshBasicMaterial( {color: 0xff0000});
+
+			var textureLoader = new THREE.TextureLoader();
+			var wall_texture = textureLoader.load('textures/bricks2.jpg');
+			wall_texture.wrapS = THREE.RepeatWrapping;
+			wall_texture.wrapT = THREE.RepeatWrapping;
+			wall_texture.repeat.set( 4, 4 );
+
+			var PC_sphere = new THREE.Mesh(CharPlaceHolderGeo,PC_PlaceHolderTexture);
+			var item_sphere = new THREE.Mesh(CharPlaceHolderGeo,itemPlaceHolderTexture);
+			
+
 			var tileGeometry = new THREE.PlaneGeometry(tileXY,tileXY); //Note the geometry of the tile is a square
 			var tileMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
-			var tile = new THREE.Mesh(tileGeometry, tileMaterial);
 
 			var ceilingGeometry = new THREE.PlaneGeometry(tileXY,tileXY); //Note the geometry of the tile is a square
 			var ceilingMaterial = new THREE.MeshBasicMaterial({ color: 0x5246f2, side: THREE.DoubleSide });
 
-			var wallGeometry = new THREE.PlaneGeometry(wallXY.x, wallXY.y);
-			var wallMaterial = new THREE.MeshBasicMaterial({ color: 0xf07400, side: THREE.DoubleSide });
-			var wall = new THREE.Mesh(tileGeometry, tileMaterial); 
-			wall.position.x = (tileXY/2); wall.position.y = (tileXY/2);
+			var wallGeometry = new THREE.BoxGeometry( tileXY, tileXY, tileXY );
+			var wallMaterial = new THREE.MeshBasicMaterial( { map: wall_texture } );
 
-			/**
-			* Test for iterating through an array of x,y coordinates
-			*/
-			// for(var it = 0; it<tileSet.length; it++){
-			// 	scene.add(returnTileMesh(tileSet[it][0],tileSet[it][1], 1) );
-			// }
+			var material = new THREE.MeshBasicMaterial( {color: 0x000000} );
 
-			//iterateDungeon(testMap);
+			//Here's the code for making the game run
+			var game_PC;
+			var rotateStateMachine = 'neutral';
+			
+			var cameraStateMachine = 'birdsEye'; //default state is to have the 
+			var final_camera_pos;
+			//keyListener for changing perspective, handling controls, etc
+			document.addEventListener('keydown', function(event) {
+			    if(event.keyCode == 16) { //16 is 'shift'
+			        if(cameraStateMachine == 'birdsEye'){
+			        	cameraStateMachine = 'first_person';
+			        	camera.position.z = -game_PC.yPos*tileXY;  camera.position.y = yStart-0.4; camera.position.x = game_PC.xPos*tileXY; // Do NOT Touch Y... plz
+						camera.rotation.x = 0;
+			        }
+			        else{
+			        	cameraStateMachine = 'birdsEye';
+			        	camera.position.z = -20;  camera.position.y = 100; camera.position.x = 20; // Do NOT Touch Y... plz
+						camera.rotation.x = -0.7854*2;
+			        }
+			    }
+			    if(event.keyCode == 68) { //68 is 'D' (AKA 'right')
+			    	//camera.rotation.y -= 0.7854*2; //rotate clockwise
+			    	if(rotateStateMachine == 'neutral'){
+			    		rotateStateMachine = 'right';
+				    	final_camera_pos = camera.rotation.y - 0.7854*2;
+				    	game_PC.rotateRight();
+			    	}
+			    }
+			    if(event.keyCode == 65) { //rotate counterclockwise
+			    	//camera.rotation.y += 0.7854*2; 
+			    	if(rotateStateMachine == 'neutral'){
+				    	rotateStateMachine = 'left';
+				    	final_camera_pos = camera.rotation.y + 0.7854*2;
+				    	game_PC.rotateLeft();	
+			    	}			    
+			    }
+			    if(event.keyCode == 69) { //'E' key used for Strafe Right
+			    	//camera.rotation.y += 0.7854*2; //rotate counterclockwise
+			    	if(rotateStateMachine == 'neutral'){
+			    		game_PC.pc_action(3);
+				    	camera.position.z = -game_PC.yPos; camera.position.x = game_PC.xPos; //Update the position of the camera to match the position of the character
+			    	}			    
+			    }
+			    if(event.keyCode == 81){ //'Q' key - used for Strafe left
+			    	if(rotateStateMachine == 'neutral'){ //allow player to move when not rotating
+			    		game_PC.pc_action(2);
+				    	camera.position.z = -game_PC.yPos; camera.position.x = game_PC.xPos; //Update the position of the camera to match the position of the character
+			    	}	
+			    }
+			    if(event.keyCode == 87) { //move forward (87 is 'W')	
+			    	if(rotateStateMachine == 'neutral'){ //allow player to move when not rotating
+			    		game_PC.pc_action(0);
+				    	camera.position.z = -game_PC.yPos; camera.position.x = game_PC.xPos; //Update the position of the camera to match the position of the character
+			    	}		    	
+			    }
+			    if(event.keyCode == 83) { //move forward (83 is 'S')
+			    	if(rotateStateMachine == 'neutral'){ //allow player to move when not rotating
+				    	game_PC.pc_action(1);
+				    	camera.position.z = -game_PC.yPos; camera.position.x = game_PC.xPos;//Update the position of the camera to match the position of the character
+			    	}
+			    }
+			    
+			});
 
-			//choose_number(10,20);
-			//var newRoom = new Room(2,2,6,12);
-			//var newHallway = new H_hallway(8,9,4);
-			//var V_hallway = new V_hallway(3,15,5);
+			document.addEventListener('click', function(event){
+				//game_PC.attack();
+			});
 
-			create_floor();
-			iterateDungeon(all_spaces);
-			iterateDungeon(edge_spaces);
+			var monster_set = []; //copy of the list of monsters generated in the game logic script
+			var monster_sprite_pair = [];
 
-			function animate() {							
-				requestAnimationFrame( animate );
+
+
+			//create a new floor, initialize monsters, and set the player's starting location
+			function init(){
+				printToMessageBox('Starting new game');
+				create_floor();
+				setMap(grid);
+				iterateDungeon(grid); //grid is created in dun_gen, this function renders the created floor;
+				monster_set = init_monsters(monster_spwn); //create monster objects 
+				placeMonsters();
+				playerPos = [playerStart[0], playerStart[1]]; //initialize the player position
+				game_PC = new PC('north',10,playerPos); //creates a new player character
+				PC_sphere.position.x = game_PC.position[0]*tileXY; PC_sphere.position.z = -game_PC.position[1]*tileXY; PC_sphere.position.y = yStart;
+				console.log(scene.children);
+			}
+
+			var pointingAt = document.getElementById('pointingAt');
+
+			function draw(){
+				updateCamera();
+				updateMonsters();
+				// update the picking ray with the camera and mouse position
+				raycaster.setFromCamera( mouse, camera );
+
+				// calculate objects intersecting the picking ray
+				var intersects = raycaster.intersectObjects( scene.children );			
+
+			    // Create some element, e.g. div
+			    var newElement = document.createElement('div');
+			    newElement.setAttribute('id', "some-id-for-new-element");
+			    newElement.innerHTML = intersects[0];
+			    
+			    pointingAt.innerHTML = newElement;
+			    //console.log(intersects[0]);
+
 				renderer.render( scene, camera );
+			}
+
+			function animate() {	
+				draw();			
+				requestAnimationFrame( animate );
+			}
+
+			function updateMonsters(){
+				for(let i=0; i<monster_sprite_pair.length; i++){
+					//console.log("monster_sprite_pair", monster_sprite_pair[i]);
+					monster_sprite_pair[i][1].position.x = monster_sprite_pair[i][0].curr_tile.x * tileXY;
+					monster_sprite_pair[i][1].position.z = -monster_sprite_pair[i][0].curr_tile.y * tileXY;
+				}
+			}
+
+			function updateCamera(){
+				if(cameraStateMachine == 'birdsEye'){
+					camera.position.z = -20;  camera.position.y = 100; camera.position.x = 20; // Do NOT Touch Y... plz
+					camera.rotation.x = -0.7854*2;
+				}
+				else{
+					camera.position.z = -game_PC.yPos*tileXY;  camera.position.y = yStart-0.4; camera.position.x = game_PC.xPos*tileXY; // Do NOT Touch Y... plz
+					camera.rotation.x = 0;
+				}	
+
+				if(rotateStateMachine == 'right'){
+					if(camera.rotation.y >= final_camera_pos){
+						camera.rotation.y -= 0.22;
+					}
+					else{
+						camera.rotation.y = final_camera_pos;
+						//correctAngle();
+						rotateStateMachine = 'neutral';
+					}
+				}
+				else if(rotateStateMachine == 'left'){
+					if(camera.rotation.y <= final_camera_pos){
+						camera.rotation.y += 0.22;
+					}
+					else{ //finished rotating
+						camera.rotation.y = final_camera_pos;
+						//correctAngle();
+						rotateStateMachine = 'neutral';
+					}
+				}
+
+				function correctAngle() { //small function used to determine that the camera is pointed in the direction it's supposed to
+					if(game_PC.direction == 'north'){
+
+						camera.quaternion.setFromUnitVectors(axis, vector.clone().normalize());
+					} 
+					else if(game_PC.direction == 'east') camera.rotateOnWorldAxis(camera, 0);
+					else if(game_PC.direction == 'south') camera.rotateOnWorldAxis(camera, (270*(MATH.PI/180)) );
+					else if(game_PC.direction == 'west') camera.rotateOnWorldAxis(camera, (180*(MATH.PI/180)) );
+				}
 			}
 
 			/**
@@ -75,113 +235,42 @@
 			* ground tiles at that particular location. There's 15 different opcaodes, each is represented by a number in hex
 			*/
 			function returnTileMesh(xPos, yPos, type){
-				var singleGeometry = new THREE.Geometry();
-				var groundTile = new THREE.Mesh(tileGeometry, tileMaterial);
-				var ceilingTile = new THREE.Mesh(ceilingGeometry, ceilingMaterial);				
-				var n_wall = new THREE.Mesh(wallGeometry, wallMaterial);
-				var e_wall = new THREE.Mesh(wallGeometry, wallMaterial);
-				var s_wall = new THREE.Mesh(wallGeometry, wallMaterial);
-				var w_wall = new THREE.Mesh(wallGeometry, wallMaterial);				
-				var group = new THREE.Group();
-
-
-				w_wall.rotation.y = -1.5708;
-				e_wall.rotation.y = 1.5708;
-
-				groundTile.position.x = xPos; groundTile.position.z = -yPos; 
-				groundTile.rotation.x = 1.5708;
-				ceilingTile.position.x = xPos; ceilingTile.position.z = -yPos; ceilingTile.position.y = wallXY.y;
-				ceilingTile.rotation.x = 1.5708;
-
-				w_wall.position.x = xPos-(tileXY/2); w_wall.position.z = -yPos; w_wall.position.y = (wallXY.y/2);					
-				e_wall.position.x = xPos+(tileXY/2); e_wall.position.z = -yPos; e_wall.position.y = (wallXY.y/2);
-				n_wall.position.x = xPos; n_wall.position.z = -yPos-(tileXY/2); n_wall.position.y = (wallXY.y/2);
-				s_wall.position.x = xPos; s_wall.position.z = -yPos+(tileXY/2); s_wall.position.y = (wallXY.y/2);
-				group.add(groundTile);
-				//group.add(ceilingTile);
+				let wall_cube = new THREE.Mesh(wallGeometry, wallMaterial);
+				let tile = new THREE.Mesh(tileGeometry, tileMaterial);
 
 				if(type == 1){	
-					//Return a single tile with no walls	
-					return group;
+					//Return a "wall cube"
+					wall_cube.position.x = xPos;
+					wall_cube.position.y = yStart;
+					wall_cube.position.z = -yPos;
+					return wall_cube;
 				}
-				else if(type == 2){
-					//w_wall.position.x = xPos-(tileXY/2); w_wall.position.z = -yPos; w_wall.position.y = (wallXY.y/2);
-					group.add(w_wall);					
-					return group;
-				}
-				else if(type == 3){
-					// w_wall.position.x = xPos-(tileXY/2); w_wall.position.z = -yPos; w_wall.position.y = (wallXY.y/2);					
-					// e_wall.position.x = xPos+(tileXY/2); e_wall.position.z = -yPos; e_wall.position.y = (wallXY.y/2);
-					group.add(e_wall);
-					group.add(w_wall);
-					return group;
-				}
-				else if(type == 4){
-					// w_wall.position.x = xPos-(tileXY/2); w_wall.position.z = -yPos; w_wall.position.y = (wallXY.y/2);					
-					// e_wall.position.x = xPos+(tileXY/2); e_wall.position.z = -yPos; e_wall.position.y = (wallXY.y/2);
-					// n_wall.position.x = xPos; n_wall.position.z = -yPos-(tileXY/2); n_wall.position.y = (wallXY.y/2);
-					group.add(e_wall);
-					group.add(w_wall);
-					group.add(n_wall);
-					return group;
-				}
-				else if(type == 5){
-					// n_wall.position.x = xPos; n_wall.position.z = -yPos-(tileXY/2); n_wall.position.y = (wallXY.y/2);
-					group.add(n_wall);
-					return group;
-				}
-				else if(type == 6){
-					// n_wall.position.x = xPos; n_wall.position.z = -yPos-(tileXY/2); n_wall.position.y = (wallXY.y/2);
-					// s_wall.position.x = xPos+(tileXY/2); s_wall.position.z = -yPos-(tileXY/2); s_wall.position.y = (wallXY.y/2);
-					group.add(n_wall);
-					group.add(s_wall);
-					return group;
-				}
-				else if(type == 7){
-					group.add(n_wall);
-					group.add(e_wall);
-					group.add(s_wall);
-					return group;
-				}
-				else if(type == 8){
-					group.add(e_wall);
-					return group;
-				}
-				else if(type == 9){
-					group.add(n_wall);
-					group.add(w_wall);
-					return group;
-				}
-				else if(type == 'A'){
-					group.add(e_wall);
-					group.add(s_wall);
-					group.add(w_wall);
-					return group;
-				}
-				else if(type == 'B'){
-					group.add(s_wall);
-					return group;
-				}
-				else if(type == 'C'){
-					group.add(s_wall);
-					group.add(e_wall);
-					return group;
-				}
-				else if(type == 'D'){
-					group.add(n_wall);
-					group.add(w_wall);
-					group.add(s_wall);
-					return group;
-				}
-				else if(type == 'E'){
-					group.add(w_wall);
-					group.add(s_wall);
-					return group;
-				}
-				else if(type == 'F'){
-					group.add(n_wall);
-					group.add(e_wall);
-					return group;
+
+				else if(type == 0){	
+					//Return a floor tile
+					tile.position.x = xPos;
+					tile.position.y = yStart-tileXY/2;
+					tile.position.z = -yPos;
+					tile.rotation.x = 0.7854*2;
+					return tile; 
+				}				
+				
+			}
+
+			/**
+			* function used to place the monsters in their initial positions 
+			*/
+			function placeMonsters(){
+				for(let i=0; i<monster_set.length; i++){
+					var monster_sphere = new THREE.Mesh(CharPlaceHolderGeo,monsterPlaceHolderTexture);
+					let scaledX = monster_set[i].curr_tile.x * tileXY;
+					let scaleY = monster_set[i].curr_tile.y * tileXY;
+					monster_sphere.position.x = scaledX;
+					monster_sphere.position.y = yStart;
+					monster_sphere.position.z = -scaleY;
+					monster_sprite_pair.push([monster_set[i],monster_sphere]);
+					console.log("rendering monster at", monster_sphere.position.x, monster_sphere.position.y);
+					scene.add(monster_sphere);
 				}
 			}
 
@@ -189,12 +278,34 @@
 			* Function is used to iterate through the lines of a text file, read each character of each line and pass that character along with its coordinates to the returnTileMesh function to add its associated tile to the scene. 
 			*/
 			function iterateDungeon(tileArray){
-				for(var it = 0; it<tileArray.length; it++){
-					scene.add(returnTileMesh(tileArray[it][0],tileArray[it][1], tileArray[it][2]) );
+				for(let i = 0; i< grid.length; i++ ){
+					for(let j = 0; j< grid[i].length; j++){
+						let scaledX = tileArray[i][j].x * tileXY;
+						let scaleY = tileArray[i][j].y * tileXY;
+						//scene.add(returnTileMesh(tileArray[i][j].x,tileArray[i][j].y, tileArray[i][j].type) );
+						scene.add(returnTileMesh(scaledX, scaleY, tileArray[i][j].type) );
+					}
 				}
 			}
 
+			//Programming pattern found on the three.js site
+			//https://threejs.org/docs/#api/en/core/Raycaster
+			var raycaster = new THREE.Raycaster();
+			var mouse = new THREE.Vector2();
 
+			function onMouseMove( event ) {
+
+				// calculate mouse position in normalized device coordinates
+				// (-1 to +1) for both components
+
+				mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+				mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+
+			}
+
+			window.addEventListener( 'mousemove', onMouseMove, false );
+
+			init();
 			animate();
 		</script>
 	</body>

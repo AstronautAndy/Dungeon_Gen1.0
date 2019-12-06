@@ -11,3 +11,8 @@ If I want the wall to the right edge of the tile, I have to render its X positio
 
  To have the base of the wall appear at the height of the tile I have to render its y position at:
   # wall.position.y = (tileXY/2); (this position should go unchanged throughout the entire program)
+
+ ****************************************************************************************************
+ 10/4/2019
+ This is a refactor of the originally code I put together. I want to make the code more object oriented and less "conditional" because I figured the system I was using prior - where each number in an array corresponded to a particular tile "type" would become a pain in teh butt to manage.
+ So I want to go with a more object oriented approach to allow for more flexibility in customizing different tile types. 
